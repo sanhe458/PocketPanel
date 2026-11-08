@@ -1,5 +1,8 @@
 # PocketPanel · Python + Vue 3 版
 
+[![GitHub](https://img.shields.io/badge/GitHub-sanhe458%2FPocketPanel-181717?logo=github)](https://github.com/sanhe458/PocketPanel)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](#license)
+
 把闲置的 Android 手机变成一台可远程管理的小主机。运行在 **华为 BLA-AL00（Mate 10 / Android 10 / Termux / aarch64 / 无 root）** 上——不是模拟器，是抽屉里那台 2017 年的手机。
 后端 Python 3.14 标准库，前端 Vue 3 + Vite 构建产物，runit 托管。
 
@@ -1437,3 +1440,22 @@ python3 tests/test_alerts.py
 GitHub 直连慢时的镜像说明：安装默认从内置镜像列表并发测速（GET Range 探测 6s 超时），
 自动选最快的可用源；也可下拉手选或填自定义镜像前缀（`{镜像}/{完整 GitHub URL}` 风格，
 即 ghproxy 系）。实测同一 12MB 安装包：直连下载 7 分钟中途超时失败，ghfast.top 镜像秒级完成。
+
+## 代码托管
+
+仓库地址：<https://github.com/sanhe458/PocketPanel>
+
+```bash
+git clone https://github.com/sanhe458/PocketPanel.git
+```
+
+改动后的常规流程：
+
+```bash
+git add -A && git commit -m "说明这次改了什么" && git push
+```
+
+## License
+
+MIT © 2026 [sanhe458](https://github.com/sanhe458)
+
