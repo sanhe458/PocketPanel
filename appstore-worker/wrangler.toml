@@ -1,0 +1,23 @@
+name = "pocketpanel-store"
+main = "src/index.js"
+compatibility_date = "2026-10-30"
+workers_dev = false
+
+# 用 KV 存清单：整包一份，读多写少。
+# 创建：npx wrangler kv namespace create APP_STORE
+# 把输出的 id 填到下面。
+[[kv_namespaces]]
+binding = "APP_STORE"
+id = "REPLACE_WITH_KV_ID"
+
+# 自定义域名（sanhe.dpdns.org 必须已托管在同账号的 Cloudflare 下）
+# 用 workers.dev 的话国内基本访问不了，所以关掉 workers_dev。
+routes = [
+  { pattern = "apps.sanhe.dpdns.org", custom_domain = true }
+]
+
+[vars]
+# 这两个不放明文，用 secret：
+#   npx wrangler secret put STORE_KEY
+#   npx wrangler secret put ADMIN_KEY
+# 这里留空表示由 secret 注入。
