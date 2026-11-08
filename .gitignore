@@ -16,7 +16,7 @@ appstore-worker/.deploy.json
 devsh.py
 
 # 开发过程截图（README 用图已挑到 docs/images/）
-screenshots/
+/screenshots/
 verify-device/*.png
 
 # 系统垃圾
