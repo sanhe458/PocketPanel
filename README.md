@@ -78,13 +78,19 @@ ssh -p <SSH端口> -L 8888:127.0.0.1:8888 <用户名>@<主机>
 
 ## 部署
 
-### 首次
+### 从仓库拉代码
 
 ```bash
-pkg install -y python openssh   # python 约 45MB，openssh 供 SSH 终端使用
-mkdir -p ~/pocketpanel-py
-# 上传 core.py metrics.py files.py share.py term.py app.py 与 static/
+pkg install -y python nodejs-lts openssh   # python 约 45MB，openssh 供 SSH 终端使用
+git clone https://github.com/sanhe458/PocketPanel.git ~/pocketpanel-py
+cd ~/pocketpanel-py/web && npm install && npm run build   # 产物输出到 ../static
+cd .. && python3 app.py                                   # 首次启动打印账号密码
 ```
+
+`static/` 是构建产物，不入库。**clone 后必须先 `npm run build` 一次**，否则页面 404。
+不装 Node 也行：在别的机器上 build，把整个 `static/` 拷过来。
+
+### 装成服务（runit）
 
 runit 服务 `$PREFIX/var/service/pocketpanel-py/run`：
 
@@ -105,9 +111,9 @@ sv up pocketpanel-py
 ### 更新后端
 
 ```bash
-scp -P 8022 core.py metrics.py files.py share.py term.py app.py \
-      gateway.py gateway_ir.py secretbox.py u0_a000@host:~/pocketpanel-py/
-ssh -p 8022 u0_a000@host 'sv restart pocketpanel-py'
+scp -P <SSH端口> core.py metrics.py files.py share.py term.py app.py \
+      gateway.py gateway_ir.py secretbox.py <用户名>@<主机>:~/pocketpanel-py/
+ssh -p <SSH端口> <用户名>@<主机> 'sv restart pocketpanel-py'
 ```
 
 Python 没有编译产物锁定，直接覆盖即可（`.new + mv` 是 Go 版才需要的 ETXTBSY 规避）。
@@ -121,7 +127,7 @@ Python 没有编译产物锁定，直接覆盖即可（`.new + mv` 是 Go 版才
 
 ```bash
 cd web && npm run build          # 产物在 ../static，文件名带内容 hash
-scp -P 8022 -r ../static u0_a000@host:~/pocketpanel-py/
+scp -P <SSH端口> -r ../static <用户名>@<主机>:~/pocketpanel-py/
 ```
 
 ## 目录结构
