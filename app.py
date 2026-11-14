@@ -23,6 +23,7 @@ import dockerclient
 import events
 import files
 import gateway
+import mefrp
 import messages
 import metrics
 import netguard
@@ -544,6 +545,8 @@ def _guarded(fn, *args, **kwargs):
         raise Err(409, str(e))
     except tasktypes.ValidationError as e:
         raise Err(400, str(e), e.errors)
+    except mefrp.Err as e:
+        raise Err(e.code, e.msg)
 
 
 def schedule_list(req):
@@ -675,6 +678,112 @@ def tunnel_action(req, tid, act):
 def tunnel_probe(req, tid):
     ok, detail = tunnel.probe_now(tid)
     return jresp({"ok": ok, "detail": detail})
+
+
+# ---------------- ME Frp 托管（官方客户端） ----------------
+#
+# 和上面的 tunnel.py 是两条路：那边本地配置文件是真相源，这边隧道定义在
+# MEFrp 平台上，本地只负责用官方 mefrpc 客户端把平台分配的隧道拉起来。
+
+def mefrp_status(req):
+    return jresp({"account": mefrp.account_view(),
+                  "client": mefrp.client_info(),
+                  "state": mefrp.state()})
+
+
+def mefrp_login(req):
+    b = req.json()
+    acc = _guarded(mefrp.login, b.get("username") or "", b.get("password") or "")
+    return jresp({"account": acc, "client": mefrp.client_info()})
+
+
+def mefrp_logout(req):
+    mefrp.logout()
+    return jresp({"ok": True})
+
+
+def mefrp_overview(req):
+    return jresp(_guarded(mefrp.overview))
+
+
+def mefrp_proxies(req):
+    return jresp({"proxies": _guarded(mefrp.proxies), "state": mefrp.state()})
+
+
+def mefrp_proxy_create(req):
+    _guarded(mefrp.create_proxy, req.json())
+    return jresp({"proxies": _guarded(mefrp.proxies)}, 201)
+
+
+def mefrp_proxy_update(req, pid):
+    _guarded(mefrp.update_proxy, int(pid), req.json())
+    return jresp({"ok": True})
+
+
+def mefrp_proxy_delete(req, pid):
+    _guarded(mefrp.delete_proxy, int(pid))
+    return jresp({"ok": True})
+
+
+def mefrp_proxy_toggle(req, pid):
+    b = req.json()
+    _guarded(mefrp.toggle_proxy, int(pid), bool(b.get("disabled", True)))
+    return jresp({"ok": True})
+
+
+def mefrp_proxy_kick(req, pid):
+    _guarded(mefrp.kick_proxy, int(pid))
+    return jresp({"ok": True})
+
+
+def mefrp_proxy_config(req, pid):
+    fmt = req.q("format", "toml")
+    out = _guarded(mefrp.proxy_config, int(pid), fmt)
+    out["command"] = mefrp.launch_command(pid)
+    return jresp(out)
+
+
+def mefrp_proxy_action(req, pid, act):
+    if act == "start":
+        _guarded(mefrp.start, int(pid))
+    elif act == "stop":
+        _guarded(mefrp.stop, int(pid))
+    elif act == "restart":
+        _guarded(mefrp.restart, int(pid))
+    else:
+        raise Err(404, f"未知操作 {act}")
+    return jresp({"ok": True, "state": mefrp.state()})
+
+
+def mefrp_proxy_log(req, pid):
+    lines = req.q("lines", "200")
+    try:
+        n = max(20, min(2000, int(lines)))
+    except (TypeError, ValueError):
+        n = 200
+    return jresp(mefrp.log_tail(int(pid), n))
+
+
+def mefrp_free_port(req):
+    b = req.json()
+    port = _guarded(mefrp.free_port, b.get("node_id") or 0, b.get("protocol") or "tcp")
+    return jresp({"port": port})
+
+
+def mefrp_client_install(req):
+    b = req.json() if req.method == "POST" else {}
+    return jresp(_guarded(mefrp.client_install, (b.get("tar_path") or "").strip()))
+
+
+def mefrp_client_path(req):
+    """手动指定客户端路径；传空字符串就是清掉，回到自动查找。"""
+    b = req.json()
+    path = (b.get("path") or "").strip()
+    if path and not (os.path.isfile(path) and os.access(path, os.X_OK)):
+        raise Err(400, "这个路径不是可执行文件")
+    core.cfg_update(mefrp={"client_path": path})
+    return jresp({"client": mefrp.client_info(force=True)})
+
 
 
 # ---------------- 网络守卫（M15 智能恢复） ----------------
@@ -1317,6 +1426,24 @@ ROUTES = [
     ("POST", r"^/api/tunnel/install$", tunnel_install_create, True),
     ("POST", r"^/api/tunnel/uninstall$", tunnel_uninstall, True),
 
+    # ME Frp 托管：账号 → 平台隧道 → 官方客户端进程
+    ("GET", r"^/api/mefrp/status$", mefrp_status, True),
+    ("POST", r"^/api/mefrp/login$", mefrp_login, True),
+    ("POST", r"^/api/mefrp/logout$", mefrp_logout, True),
+    ("GET", r"^/api/mefrp/overview$", mefrp_overview, True),
+    ("GET", r"^/api/mefrp/proxies$", mefrp_proxies, True),
+    ("POST", r"^/api/mefrp/proxy$", mefrp_proxy_create, True),
+    ("POST", r"^/api/mefrp/proxy/(\d+)$", mefrp_proxy_update, True),
+    ("GET", r"^/api/mefrp/proxy/(\d+)/config$", mefrp_proxy_config, True),
+    ("GET", r"^/api/mefrp/proxy/(\d+)/log$", mefrp_proxy_log, True),
+    ("POST", r"^/api/mefrp/proxy/(\d+)/(start|stop|restart)$", mefrp_proxy_action, True),
+    ("POST", r"^/api/mefrp/proxy/(\d+)/delete$", mefrp_proxy_delete, True),
+    ("POST", r"^/api/mefrp/proxy/(\d+)/toggle$", mefrp_proxy_toggle, True),
+    ("POST", r"^/api/mefrp/proxy/(\d+)/kick$", mefrp_proxy_kick, True),
+    ("POST", r"^/api/mefrp/freeport$", mefrp_free_port, True),
+    ("POST", r"^/api/mefrp/client/install$", mefrp_client_install, True),
+    ("POST", r"^/api/mefrp/client/path$", mefrp_client_path, True),
+
     ("GET", r"^/api/netguard/status$", netguard_status, True),
     ("GET", r"^/api/netguard/settings$", netguard_status, True),
     ("POST", r"^/api/netguard/settings$", netguard_settings, True),
@@ -1709,6 +1836,7 @@ def main():
     term.ensure_reaper()
     sched.ensure_scheduler()
     tunnel.ensure_monitor()
+    mefrp.init()
     cloudflare.ensure_monitor()
     netguard.ensure_thread()
     alerts.ensure_thread()
@@ -1728,6 +1856,12 @@ def main():
         # SIGHUP，会留一堆几 MB 的孤儿 bash 在后台。
         try:
             term.close_all()
+        except Exception:  # noqa: BLE001
+            pass
+        # MEFrp 的客户端进程要一起收掉：否则面板重启后再拉一个，
+        # 平台会判定「隧道已在线」而拒绝，两边都连不上。
+        try:
+            mefrp.shutdown()
         except Exception:  # noqa: BLE001
             pass
         os._exit(0)

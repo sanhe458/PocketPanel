@@ -47,7 +47,8 @@ export const NAV_GROUPS = [
     title: '穿透',
     items: [
       { id: 'tunnels', label: '内网穿透', icon: 'share', desc: 'frpc 隧道配置、保活与公网拨测' },
-      { id: 'cloudflare', label: 'CF 穿透', icon: 'globe', desc: 'Cloudflare Tunnel · 免公网 IP · 临时地址与固定域名' }
+      { id: 'cloudflare', label: 'CF 穿透', icon: 'globe', desc: 'Cloudflare Tunnel · 免公网 IP · 临时地址与固定域名' },
+      { id: 'mefrp', label: 'ME Frp', icon: 'wand', desc: '幻缘映射 · 平台建隧道 · 官方 mefrpc 客户端接管' }
     ]
   },
   {

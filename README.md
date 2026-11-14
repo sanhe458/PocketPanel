@@ -689,6 +689,87 @@ cloudflared 的常规用法是写 `config.yml`。本项目所有解析器都是�
 删除固定隧道时默认连 CF 侧的 tunnel 和 DNS 记录一起清，避免账号里堆一堆孤儿隧道；
 建隧道过程中任何一步失败也会回滚已建的部分。
 
+## ME Frp 托管（幻缘映射）
+
+前面两个（frpc 配置文件、cloudflared）都是「本地定义，客户端去连」。ME Frp 反过来：
+隧道定义在平台上（节点、端口、域名都是平台分配），本地只负责用一个授权令牌把官方客户端拉起来。
+所以 `mefrp.py` 和 `tunnel.py` 是两条独立的路，不共用实例池。
+
+### 三层，三个凭据
+
+| 层 | 用什么认证 | 存在哪 |
+|---|---|---|
+| 账号（登录、建隧道、改配置） | 面板访问令牌 `Authorization: Bearer …` | `data/mefrp/account.json`，secretbox 加密 |
+| 客户端连接节点 | 用户令牌 `frpToken`（`-t`） | 同上，加密；另有接口可单独取 |
+| 单条隧道 | 隧道 Id（`-p`） | 平台侧，面板只读不存 |
+
+两种令牌不能混用——把 Bearer 传给 `-t` 会得到 `访问密钥和客户端鉴权密钥并不能混用`。
+
+### 人机验证是纯计算，不用浏览器
+
+登录页的人机验证是自托管的 [Cap](https://github.com/tiagorangel1/cap)：服务端只下发
+`{c: 10, s: 32, d: 3}` 三个数字和一个 token，salt 与 target 由前端用自己的哈希派生——
+
+```
+salt_i   = hash(token + i,      s)      i = 1..c
+target_i = hash(token + i + "d", d)
+nonce_i  = min{ n : sha256(salt_i + n)[:len(target_i)] == target_i }
+```
+
+`hash` 是 FNV-1a 32 位接 xorshift32 展开（`_cap_hash()`），不是 sha256。踩坑点在于
+JS 里 `t ^= c` 每轮把 t 截成 int32，而 `t += (t<<1)+…+(t<<24)` 那一步是普通浮点加法
+（可以超过 2³²），下一轮才被截回去；Python 每步都要显式做 i32 回绕，否则算出来的 salt
+和浏览器对不上，`redeem` 永远 400。
+
+十次挑战、每次约 4096 次 sha256，整轮在手机上几十毫秒到一百多毫秒，不需要 WebAssembly，
+更不需要无头浏览器。`redeem` 拿到的一次性 `captchaToken` 只在 `POST /public/login` 用一次。
+
+### 快捷启动，不落配置文件
+
+官方客户端有两个入口，面板用后者：
+
+- 配置文件：`mefrpc -c config.toml`（任意 frpc 0.52+ 也认，需要自己维护配置文件）
+- 快捷启动：`mefrpc -t <frpToken> -p <隧道Id> -n` ← 面板走这条
+
+`-n` 跳过启动时的更新检查；不跳的话在没网的电梯里会先卡十几秒。客户端进程按隧道一条一个，
+日志落 `data/mefrp/{id}.log`（512KB 轮转），退出码记进 `run.json`。
+
+### 保活与「隧道当前在线」
+
+平台的隧道一旦在线，另一个客户端再去连就会失败：
+`获取隧道失败: API 错误: 隧道当前在线, 请尝试使用强制下线隧道功能`。
+面板的处理是：
+
+- `run.json` 里存「用户意图」(`want`)，面板重启后按意图自动拉起；
+- 连续失败 5 次熔断，退避 2s→4s→…→120s，错误写进隧道行上；
+- **面板自己退出时 `mefrp.shutdown()` 会先收掉子进程**——这条很关键，否则面板重启后
+  新进程去连，平台回「已在线」，两边都连不上，只能等平台的隧道超时。
+
+「强制下线」是平台侧接口，它要反向连节点的管理端口。节点管理端口不通时这个接口会超时
+（`dial tcp <node>:2334: i/o timeout`），不是面板的问题。
+
+### 接口
+
+| 方法 | 路径 | 作用 |
+|---|---|---|
+| GET | `/api/mefrp/status` | 登录态 + 客户端信息 + 本机托管态 |
+| POST | `/api/mefrp/login` | `{username, password}`，面板内部解人机验证 |
+| POST | `/api/mefrp/logout` | 清掉加密令牌 |
+| GET | `/api/mefrp/overview` | 用户信息、流量、节点列表、令牌掩码 |
+| GET | `/api/mefrp/proxies` | 平台隧道 + 本机进程状态合并 |
+| POST | `/api/mefrp/proxy` | 建隧道 |
+| POST | `/api/mefrp/proxy/{id}` | 改隧道 |
+| GET | `/api/mefrp/proxy/{id}/config?format=toml` | 生成配置 + 启动命令 |
+| GET | `/api/mefrp/proxy/{id}/log` | 客户端日志尾巴 |
+| POST | `/api/mefrp/proxy/{id}/{start\|stop\|restart}` | 本机进程 |
+| POST | `/api/mefrp/proxy/{id}/{delete\|toggle\|kick}` | 平台侧操作 |
+| POST | `/api/mefrp/freeport` | `{node_id, protocol}` 取空闲远程端口 |
+| POST | `/api/mefrp/client/install` | 扫下载目录里的官方 tar 装到 `data/mefrp/bin` |
+| POST | `/api/mefrp/client/path` | 手动指定 mefrpc 路径 |
+
+客户端查找顺序：设置里的 `mefrp.client_path` → `data/mefrp/bin/mefrpc` → `~/mefrpc` →
+`$PREFIX/bin/mefrpc` → `PATH` → `~/mefrpc_*/mefrpc`（官方 tar 解压后的目录名带版本号）。
+
 ## 网络守卫：基于网络变动的智能恢复（M15）
 
 手机上的内网穿透有个躲不开的现实：**网络一变，隧道客户端不一定能自己爬起来**。

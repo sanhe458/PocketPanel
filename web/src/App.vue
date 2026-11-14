@@ -179,6 +179,7 @@ const Terminal = asyncPage(() => import('./views/Terminal.vue'))
 const Files = asyncPage(() => import('./views/Files.vue'))
 const Tunnels = asyncPage(() => import('./views/Tunnels.vue'))
 const Cloudflare = asyncPage(() => import('./views/Cloudflare.vue'))
+const Mefrp = asyncPage(() => import('./views/Mefrp.vue'))
 const Docker = asyncPage(() => import('./views/Docker.vue'))
 const AppStore = asyncPage(() => import('./views/AppStore.vue'))
 const Gateway = asyncPage(() => import('./views/Gateway.vue'))
@@ -186,7 +187,7 @@ const Alerts = asyncPage(() => import('./views/Alerts.vue'))
 
 const VIEWS = { overview: Overview, services: Services, processes: Processes, files: Files,
   terminal: Terminal, schedule: Schedule, network: Network, logs: Logs, tasks: Tasks,
-  tunnels: Tunnels, cloudflare: Cloudflare, settings: Settings, docker: Docker,
+  tunnels: Tunnels, cloudflare: Cloudflare, mefrp: Mefrp, settings: Settings, docker: Docker,
   store: AppStore, gateway: Gateway, alerts: Alerts }
 
 const TABS = TAB_IDS.map(id => NAV_MAP[id])
