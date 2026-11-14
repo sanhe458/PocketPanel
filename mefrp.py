@@ -338,7 +338,11 @@ def _node_view(n):
 
 def proxies():
     d = _api("GET", "/auth/proxy/list") or {}
-    nodes = {n.get("nodeId"): n.get("name") for n in (d.get("nodes") or [])}
+    # 节点公网地址只有这个接口给：node/list 的 hostname 一律是空串，
+    # 而 proxy/list 只回「当前有隧道的节点」，正好够列表页用。
+    nodes = {n.get("nodeId"): {"name": n.get("name") or "",
+                               "host": n.get("hostname") or ""}
+             for n in (d.get("nodes") or [])}
     out = []
     for p in d.get("proxies") or []:
         pid = str(p.get("proxyId"))
@@ -346,13 +350,18 @@ def proxies():
         pr = _procs.get(pid)
         local = "running" if (pr and pr["proc"].poll() is None) else "stopped"
         doms = _domains(p.get("domain"))
-        node_name = nodes.get(p.get("nodeId")) or f"节点 {p.get('nodeId')}"
+        nd = nodes.get(p.get("nodeId")) or {}
+        node_name = nd.get("name") or f"节点 {p.get('nodeId')}"
+        node_host = nd.get("host") or ""
+        address, connect = _target_of(doms, p.get("proxyType"), node_host,
+                                      p.get("remotePort") or 0)
         out.append({
             "id": p.get("proxyId"),
             "name": p.get("proxyName") or "",
             "type": p.get("proxyType") or "tcp",
             "node_id": p.get("nodeId"),
             "node_name": node_name,
+            "node_host": node_host,
             "local_ip": p.get("localIp") or "",
             "local_port": p.get("localPort"),
             "remote_port": p.get("remotePort"),
@@ -372,8 +381,8 @@ def proxies():
             "want": bool(st.get("want")),
             "restarts": st.get("restarts") or 0,
             "last_error": st.get("last_error") or "",
-            "address": _address_of(doms, p.get("proxyType"), node_name,
-                                   p.get("remotePort") or 0),
+            "address": address,
+            "connect": connect,
         })
     out.sort(key=lambda x: (x["type"], x["name"]))
     return out
@@ -392,16 +401,22 @@ def _domains(raw):
     return [x.strip() for x in raw.split(",") if x.strip()]
 
 
-def _address_of(domains, ptype, node_name="", remote_port=0):
+def _target_of(doms, ptype, host, remote_port):
+    """返回 (展示地址, 可复制连接串)。
+
+    HTTP/HTTPS 走域名，TCP/UDP 是「节点公网 IP:远程端口」——不加 IP 的话
+    用户拿到的只是一个孤零零的端口，发不出也连不上。
+    """
     t = (ptype or "tcp").lower()
     if t in ("http", "https"):
-        if domains:
-            return f"{'https' if t == 'https' else 'http'}://{domains[0]}"
-        return ""
-    port = remote_port
-    if port:
-        return f":{port}"
-    return ""
+        if not doms:
+            return "", ""
+        scheme = "https" if t == "https" else "http"
+        return f"{scheme}://{doms[0]}", doms[0]
+    if not remote_port:
+        return "", ""
+    conn = f"{host}:{remote_port}" if host else f":{remote_port}"
+    return conn, conn
 
 
 def free_port(node_id, protocol="tcp"):

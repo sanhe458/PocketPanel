@@ -117,9 +117,11 @@
             <span class="tag r" v-if="p.banned" :title="p.ban_reason">已封禁</span>
           </div>
           <div class="mf-row-sub mono ell">
-            {{ p.local_ip }}:{{ p.local_port }}
+            <span class="dim">{{ p.local_ip }}:{{ p.local_port }}</span>
             <Icon name="chevronRight" class="ni s12" />
-            {{ p.address || p.node_name }}
+            <b v-if="p.connect" class="mf-addr" :title="'点击复制 ' + p.connect"
+               @click="copy(p.connect)">{{ p.address }}</b>
+            <span v-else class="dim">节点地址未知（「更多 → 配置」里有 serverAddr）</span>
             <span class="dim"> · {{ p.node_name }}</span>
           </div>
           <div class="mf-row-sub dim" v-if="p.last_error">上次错误：{{ p.last_error }}</div>
@@ -200,6 +202,7 @@
   <!-- 更多 -->
   <Modal v-if="more.open" @close="more.open = false" :title="more.p ? more.p.name : ''">
     <div class="mf-menu" v-if="more.p">
+      <button class="mf-menu-i" @click="copy(more.p.connect)"><Icon name="copy" />复制连接地址</button>
       <button class="mf-menu-i" @click="toConfig('toml')"><Icon name="file" />生成配置（TOML）</button>
       <button class="mf-menu-i" @click="toConfig('ini')"><Icon name="file" />生成配置（INI）</button>
       <button class="mf-menu-i" @click="askEdit"><Icon name="edit" />编辑</button>
@@ -529,6 +532,7 @@ onUnmounted(() => clearInterval(timer))
 .mf-row-t { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .mf-row-t b { font-size: 13.5px; max-width: 46vw; }
 .mf-row-sub { font-size: 11.5px; color: var(--dim); }
+.mf-addr { color: var(--brand); cursor: pointer; text-decoration: underline dotted; }
 .mf-row-ops { display: flex; gap: 6px; flex-shrink: 0; }
 .mf-row-ops .btn { padding: 4px 8px; font-size: 12px; }
 .mf-chips { display: flex; gap: 6px; flex-wrap: wrap; }
