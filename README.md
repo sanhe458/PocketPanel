@@ -1441,6 +1441,9 @@ python3 tests/test_netguard_dev.py
 # 监控告警 123 项（自起最小 SMTP 服务器与假 HTTP 端点：凭据加密/邮件模板/
 # 真实 SMTP 交互/防抖状态机/URL 与端口探活/系统联动/事件历史/告警闭环，不联网不开真邮箱）
 python3 tests/test_alerts.py
+
+# 会话持久化 30 项（重启恢复/滑动续期/过期清理/登出/改密全清/落盘不含明文 token/文件权限）
+python3 tests/test_session.py
 ```
 
 GitHub 直连慢时的镜像说明：安装默认从内置镜像列表并发测速（GET Range 探测 6s 超时），
