@@ -24,7 +24,7 @@
 | 局域网地址 | `http://<手机IP>:8888` |
 | 用户名 | `admin` |
 | 密码 | 首次启动时随机生成并打印在控制台（同时写入 `data/config.json` 的 `init_pwd`） |
-| 会话 | HttpOnly Cookie，24 小时 |
+| 会话 | HttpOnly Cookie，**90 天**，用着自动续期；落盘在 `data/sessions.json`（存 token 的 sha256），重启面板不用重新登录 |
 
 首次启动的终端长这样，密码只打印这一次，登录后请立刻改掉：
 
@@ -183,7 +183,7 @@ pocketpanel-python/
 
 | 模块 | 能力 |
 |---|---|
-| 账户 | 用户名 + 密码登录、改名改密、旧会话失效 |
+| 账户 | 用户名 + 密码登录、改名改密、旧会话失效；登录状态落盘，重启面板不用重新登录 |
 | 概览 | CPU / 内存 / 存储 / 电池 / 温度 / 进程数 / 面板运行时长 / CPU 曲线 |
 | 服务 | runit 列表、启停重启、面板自身保护 |
 | 进程 | 内存排序、完整命令行、结束进程、关键进程保护 |
@@ -595,7 +595,7 @@ PROVIDERS = {
 
 ```
 ~/pocketpanel-py/         代码（app.py + static/）
-~/pocketpanel/data/       数据（config.json、docker.json、docker-runtime/）
+~/pocketpanel/data/       数据（config.json、sessions.json、docker.json、docker-runtime/）
 ~/.udocker/               udocker 的镜像与容器（约 230MB）
 $PREFIX/var/service/      runit 服务：pocketpanel-py、udockerd
 ```
@@ -1223,7 +1223,7 @@ sv up pocketpanel
 
 ```
 POST   /api/login              {username, password}
-GET    /api/session            {authed, username, version}
+GET    /api/session            {authed, username, token, expires_at, version}
 POST   /api/passwd
 
 GET    /api/overview           指标聚合

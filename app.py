@@ -135,7 +135,11 @@ def jresp(obj, code=200, headers=None, cookies=None):
     return {"json": obj, "code": code, "headers": headers or {}, "cookies": cookies or []}
 
 
-def cookie_header(name, value, max_age=86400, clear=False):
+def cookie_header(name, value, max_age=None, clear=False):
+    # 默认跟会话同寿。以前写死 86400，浏览器第二天就把 cookie 扔了，
+    # 后端还认着，前端却发不出请求。
+    if max_age is None:
+        max_age = core.SESS_TTL
     if clear:
         return f"{name}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
     return f"{name}={value}; Path=/; Max-Age={max_age}; HttpOnly; SameSite=Lax"
@@ -177,13 +181,21 @@ def logout(req):
 def session(req):
     if not need_auth(req):
         return jresp({"authed": False, "version": core.APP_VERSION})
+    tok = req.cookie("pp_token") or req.q("token") or ""
     # 回传会话 token：刷新页面后前端要靠它给事件通道的 WebSocket 鉴权
     # （浏览器的 WS API 不能自定义请求头）
+    #
+    # 顺便把 cookie 的 Max-Age 往后推。cookie 的倒计时是浏览器在「设置那一刻」
+    # 起算的，不会因为请求而自动延长；后端已经续期了，浏览器那边也得跟上，
+    # 否则第 91 天 cookie 先没了。
+    cookies = [cookie_header("pp_token", tok)] if req.cookie("pp_token") else []
     return jresp({"authed": True,
                   "username": core.cfg_get("username", default=core.DEFAULT_USER),
                   "created_at": core.cfg_get("created_at", default=0),
-                  "token": req.cookie("pp_token") or req.q("token") or "",
-                  "version": core.APP_VERSION})
+                  "token": tok,
+                  "expires_at": core.session_expiry(tok),
+                  "version": core.APP_VERSION},
+                 cookies=cookies)
 
 
 def change_account(req):
@@ -1684,6 +1696,9 @@ def main():
             pass
 
     core.cfg_reload()
+    _restored = core.sessions_init()
+    if _restored:
+        print(f" 恢复了 {_restored} 个登录会话（重启不用重新登录）")
     port = int(core.cfg_get("port", default=8888))
     port = int(os.environ.get("PP_PORT") or port)
     os.makedirs(os.path.join(core.DATA), mode=0o700, exist_ok=True)

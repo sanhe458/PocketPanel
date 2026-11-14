@@ -599,10 +599,10 @@ print("[9] 总览")
 fresh(cfg={"fail_threshold": 3, "silence_min": 25, "battery_low": 15})
 alerts.save_smtp({"host": "smtp.qq.com", "port": 465, "security": "ssl",
                   "user": "someone@example.com", "to": ["someone@example.com"],
-                  "password": "REDACTED-AUTHCODE"})
+                  "password": "fake-auth-code-9f3a"})
 st = alerts.status()
 check("总览含 smtp 掩码", st["smtp"]["has_password"] is True
-      and "REDACTED-AUTHCODE" not in json.dumps(st, ensure_ascii=False))
+      and "fake-auth-code-9f3a" not in json.dumps(st, ensure_ascii=False))
 check("总览含阈值", st["fail_threshold"] == 3 and st["silence_min"] == 25)
 check("总览含规则", set(st["rules"]) == {"tunnel", "container", "schedule", "net", "battery"})
 check("总览含状态计数", "counts" in st and st["counts"]["healthy"] == 0)

@@ -11,7 +11,15 @@
       </div>
       <div class="field">
         <label>密码</label>
-        <input class="input" type="password" v-model="form.password" autocomplete="current-password" placeholder="请输入密码">
+        <div class="pwd-wrap">
+          <input class="input" :type="showPwd ? 'text' : 'password'" v-model="form.password"
+                 autocomplete="current-password" placeholder="请输入密码">
+          <button type="button" class="pwd-eye" @click="showPwd = !showPwd"
+                  :aria-label="showPwd ? '隐藏密码' : '显示密码'"
+                  :title="showPwd ? '隐藏密码' : '显示密码'">
+            <Icon :name="showPwd ? 'eyeOff' : 'eye'" size="s18" />
+          </button>
+        </div>
       </div>
       <div class="err" style="min-height:18px">{{ loginErr }}</div>
       <button class="btn primary block lg" type="submit" :disabled="busy">
@@ -227,6 +235,7 @@ const busy = ref(false)
 const online = ref(true)
 const loginErr = ref('')
 const form = ref({ username: 'admin', password: '' })
+const showPwd = ref(false)   // 密码框的小眼睛
 
 const view = computed(() => VIEWS[ui.page] || Overview)
 const cur = computed(() => NAV_MAP[ui.page] || NAV_MAP.overview)
@@ -283,6 +292,7 @@ async function doLogin() {
     // 要靠查询参数把 token 带过去
     setEventToken(d.token || '')
     form.value.password = ''
+    showPwd.value = false
     // 刷新后重登录：恢复 hash 指向的页面；无 hash 则回仪表盘
     const p = pageFromHash()
     if (p) ui.page = p

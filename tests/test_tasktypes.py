@@ -4,7 +4,9 @@ import os, time, json, subprocess
 import requests
 
 BASE = os.environ.get("PP_BASE", "http://127.0.0.1:8099")
-PW = os.environ.get("PP_PASS", "REDACTED-PASSWORD")
+PW = os.environ.get("PP_PASS", "")
+if not PW and __name__ == "__main__":
+    raise SystemExit("请提供面板密码：PP_PASS=你的密码 BASE=http://127.0.0.1:8888 python3 tests/test_tasktypes.py")
 ok, fails = 0, []
 
 

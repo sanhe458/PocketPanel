@@ -22,11 +22,27 @@
         </div>
         <div class="field">
           <label>当前密码</label>
-          <input class="input" type="password" v-model="form.old" placeholder="修改前需验证" autocomplete="current-password">
+          <div class="pwd-wrap">
+            <input class="input" :type="showOld ? 'text' : 'password'" v-model="form.old"
+                   placeholder="修改前需验证" autocomplete="current-password">
+            <button type="button" class="pwd-eye" @click="showOld = !showOld"
+                    :aria-label="showOld ? '隐藏密码' : '显示密码'"
+                    :title="showOld ? '隐藏密码' : '显示密码'">
+              <Icon :name="showOld ? 'eyeOff' : 'eye'" size="s18" />
+            </button>
+          </div>
         </div>
         <div class="field">
           <label>新密码</label>
-          <input class="input" type="password" v-model="form.pwd" placeholder="留空则不修改，至少 6 位" autocomplete="new-password">
+          <div class="pwd-wrap">
+            <input class="input" :type="showNew ? 'text' : 'password'" v-model="form.pwd"
+                   placeholder="留空则不修改，至少 6 位" autocomplete="new-password">
+            <button type="button" class="pwd-eye" @click="showNew = !showNew"
+                    :aria-label="showNew ? '隐藏密码' : '显示密码'"
+                    :title="showNew ? '隐藏密码' : '显示密码'">
+              <Icon :name="showNew ? 'eyeOff' : 'eye'" size="s18" />
+            </button>
+          </div>
         </div>
         <div class="err">{{ err }}</div>
       </div>
@@ -97,7 +113,7 @@
         <div class="kv"><span class="k">当前访问</span><span class="v mono">{{ host }}</span></div>
         <div class="kv"><span class="k">访问端口</span><span class="v mono">{{ port }}</span></div>
         <div class="kv"><span class="k">登录用户</span><span class="v">{{ ui.user }}</span></div>
-        <div class="kv"><span class="k">会话有效期</span><span class="v">24 小时</span></div>
+        <div class="kv"><span class="k">会话有效期</span><span class="v">90 天 · 用着自动续期</span></div>
       </div>
       <div class="card-f">
         <button class="btn danger" style="flex:1" @click="logout"><Icon name="logout" />退出登录</button>
@@ -142,6 +158,8 @@ import { ui, toast, applyTheme, setTermTransport } from '../store'
 import Icon from '../components/Icon.vue'
 
 const form = ref({ username: ui.user, old: '', pwd: '' })
+const showOld = ref(false)
+const showNew = ref(false)
 const err = ref('')
 const busy = ref(false)
 const py = ref('')

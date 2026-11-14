@@ -45,6 +45,12 @@ def load_config():
             "hash": hash_pwd(salt, pwd), "init_pwd": pwd, "created_at": int(time.time()),
         }
         save_config(cfg)
+        # 重置账号（删了 config.json 或首次启动）：旧会话一并作废。
+        # 否则忘了密码的人把 config.json 删掉，已经登录过的设备照样进得来。
+        try:
+            os.remove(os.path.join(DATA, "sessions.json"))
+        except OSError:
+            pass
         print("=" * 40)
         print(" 首次启动，已生成登录账号")
         print(" 用户名:", cfg["username"])
@@ -96,39 +102,133 @@ def cfg_reload():
 
 
 # ---------------- 会话 ----------------
+#
+# 会话要活过重启。早期版本把 SESSIONS 放在进程内存里，`sv restart` 一次
+# 所有人都被踢下线，24 小时后又要重登——在家用面板上这两件事都很烦。
+#
+# 现在落盘到 data/sessions.json：
+#   * 键是 token 的 sha256，文件被人读走也换不出可用的 token；
+#   * 默认 90 天，用着就自动续期（剩余不足 30 天才写盘，不是每个请求都写）；
+#   * 改密码会清空，删掉 config.json 重置账号也会清空。
 
-SESSIONS = {}
+SESS_TTL = 90 * 86400        # 会话有效期
+SESS_RENEW_AT = 30 * 86400   # 剩余不足这么久就续一轮
+SESS_FILE = "sessions.json"
+
+SESSIONS = {}          # 明文 token -> 会话；只含本进程签发的，重启后为空
+_SESS_HASHED = {}      # sha256(token) -> 会话；含从磁盘恢复的
 SESS_LOCK = threading.Lock()
+
+
+def _sess_path():
+    return os.path.join(DATA, SESS_FILE)
+
+
+def _tok_key(tok):
+    return hashlib.sha256(tok.encode("utf-8")).hexdigest()
+
+
+def _sess_save():
+    """按 _SESS_HASHED 重写会话文件。调用方必须持锁。
+
+    写盘失败只当没这回事：登录/鉴权不该因为磁盘满了就走不下去，
+    最坏的结果是重启后需要重新登录一次。
+    """
+    now = time.time()
+    data = {k: {"user": v.get("user") or DEFAULT_USER, "exp": int(v["exp"]),
+                "seen": int(v.get("seen") or now)}
+            for k, v in _SESS_HASHED.items() if v["exp"] > now}
+    p = _sess_path()
+    try:
+        os.makedirs(os.path.dirname(p), mode=0o700, exist_ok=True)
+        tmp = p + ".tmp"
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({"version": 1, "sessions": data}, f)
+        os.replace(tmp, p)
+    except OSError:
+        pass
+
+
+def sessions_init():
+    """启动时把磁盘上的会话读回内存，过期的直接丢掉。"""
+    try:
+        with open(_sess_path(), "r", encoding="utf-8") as f:
+            raw = json.load(f)
+    except (OSError, ValueError):
+        return 0
+    now = time.time()
+    n = 0
+    with SESS_LOCK:
+        for k, v in ((raw or {}).get("sessions") or {}).items():
+            try:
+                exp = float(v.get("exp") or 0)
+            except (TypeError, ValueError):
+                continue
+            if exp > now:
+                _SESS_HASHED[k] = {"user": v.get("user") or DEFAULT_USER,
+                                   "exp": exp, "seen": float(v.get("seen") or now)}
+                n += 1
+    return n
 
 
 def new_session(user):
     tok = secrets.token_hex(24)
+    now = time.time()
     with SESS_LOCK:
-        SESSIONS[tok] = {"user": user, "exp": time.time() + 86400}
+        info = {"user": user, "exp": now + SESS_TTL, "seen": now}
+        SESSIONS[tok] = info
+        _SESS_HASHED[_tok_key(tok)] = info
+        _sess_save()
     return tok
 
 
 def check_session(token):
     if not token:
         return False
+    now = time.time()
     with SESS_LOCK:
         s = SESSIONS.get(token)
+        if s is None:
+            s = _SESS_HASHED.get(_tok_key(token))
         if not s:
             return False
-        if s["exp"] < time.time():
+        if s["exp"] < now:
             SESSIONS.pop(token, None)
+            _SESS_HASHED.pop(_tok_key(token), None)
+            _sess_save()
             return False
+        # 滑动续期：只要还在用就不掉线
+        if s["exp"] - now < SESS_RENEW_AT:
+            s["exp"] = now + SESS_TTL
+            s["seen"] = now
+            _sess_save()
         return True
 
 
+def session_expiry(token):
+    """给前端看的过期时间戳；查不到返回 0。"""
+    if not token:
+        return 0
+    with SESS_LOCK:
+        s = SESSIONS.get(token) or _SESS_HASHED.get(_tok_key(token))
+        return int(s["exp"]) if s else 0
+
+
 def drop_session(token):
+    if not token:
+        return
     with SESS_LOCK:
         SESSIONS.pop(token, None)
+        _SESS_HASHED.pop(_tok_key(token), None)
+        _sess_save()
 
 
 def drop_all_sessions():
     with SESS_LOCK:
         SESSIONS.clear()
+        _SESS_HASHED.clear()
+        _sess_save()
 
 
 # ---------------- 路径沙箱 ----------------

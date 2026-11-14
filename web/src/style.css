@@ -594,6 +594,18 @@ pre.code{margin:0;background:var(--code);color:var(--code-fg);border:1px solid v
 .login-card h1{font-size:19px;margin:0 0 5px;letter-spacing:-.4px;font-weight:700}
 .login-card p{margin:0 0 22px;font-size:12.5px;color:var(--txt-3);line-height:1.6}
 
+/* 密码框的小眼睛：按钮压在输入框右侧，点击切换明文 */
+.pwd-wrap{position:relative}
+.pwd-wrap .input{padding-right:40px}
+.pwd-eye{position:absolute;right:3px;top:50%;transform:translateY(-50%);
+  display:flex;align-items:center;justify-content:center;width:30px;height:28px;
+  border:0;background:none;color:var(--txt-3);cursor:pointer;border-radius:var(--r-sm);
+  padding:0;-webkit-tap-highlight-color:transparent;transition:color .15s,background .15s}
+.pwd-eye:hover{color:var(--txt);background:var(--hover)}
+.pwd-eye:active{color:var(--brand)}
+.pwd-eye:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+.pwd-eye svg{pointer-events:none}
+
 /* ---------- 19. 终端页 ---------- */
 .term-page{display:flex;flex-direction:column;height:calc(100dvh - var(--h-top) - 78px);min-height:340px;
   background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden}
