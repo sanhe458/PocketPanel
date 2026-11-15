@@ -214,7 +214,9 @@ def restart_app(reason):
     if ok:
         return "runit"
 
-    # runit 没接住。可能只是 sv 自己失败，但面板其实还活着 —— 那就别起第二个。
+    # 卡死的进程不响应 TERM，sv 会等到超时才算失败。这时候 runsv 自己的
+    # KILL 也在路上了，先给它几秒把新进程拉起来，别急着自己再起一个。
+    time.sleep(4)
     good, _, _ = probe()
     if good:
         print(f"[guard] sv 重启失败但面板仍可访问，跳过（{out}）", flush=True)

@@ -407,6 +407,16 @@ runit 不在（开发机上跑）才退化成 `Popen(start_new_session=True)`，
 `data/{guard.pid,guard.hb,guard.json,guard.off,app.pid}`。
 界面在「设置 → 守护进程」，能看到心跳年龄、累计拉起次数、最近一次异常，也能启停。
 
+真机实测（Android / Termux / runit）：
+
+| 场景 | 判定 | 结果 |
+|---|---|---|
+| `kill -9` 面板（进程真没了） | 连接被拒，1 次即动手 | `sv restart` 拉起 |
+| `kill -STOP` 面板（进程在、HTTP 卡死） | 连续 3 次超时，约 45 秒 | runit 重启，**这是它自己做不到的** |
+| `sv down pocketpanel-guard` | 面板 0 秒发现「进程不在」 | 立刻 `sv restart` 拉回 |
+
+沙箱里（没有 runit，走 spawn 降级）`kill -9` 到恢复是 12 秒。
+
 ### 告警
 
 `runtime.ensure_monitor()` 起一个线程长连 `/events`（`since` 游标 + 去重集合，
