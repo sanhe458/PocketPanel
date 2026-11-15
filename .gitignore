@@ -22,3 +22,4 @@ verify-device/*.png
 # 系统垃圾
 .DS_Store
 *.swp
+app.py.bak.*

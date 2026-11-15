@@ -82,8 +82,8 @@
       </div>
       <div class="card mf-stat">
         <span class="mf-stat-l">本月流量</span>
-        <b>{{ kb(info.traffic) }}</b>
-        <span class="dim">出/入上限 {{ kb(info.out_bound) }} · {{ kb(info.in_bound) }}</span>
+        <b>{{ fmtB(info.traffic) }}</b>
+        <span class="dim">出 {{ fmtB(info.out_bound) }} · 入 {{ fmtB(info.in_bound) }} 上限</span>
       </div>
       <div class="card mf-stat">
         <span class="mf-stat-l">客户端令牌</span>
@@ -117,11 +117,9 @@
             <span class="tag r" v-if="p.banned" :title="p.ban_reason">已封禁</span>
           </div>
           <div class="mf-row-sub mono ell">
-            <span class="dim">{{ p.local_ip }}:{{ p.local_port }}</span>
+            {{ p.local_ip }}:{{ p.local_port }}
             <Icon name="chevronRight" class="ni s12" />
-            <b v-if="p.connect" class="mf-addr" :title="'点击复制 ' + p.connect"
-               @click="copy(p.connect)">{{ p.address }}</b>
-            <span v-else class="dim">节点地址未知（「更多 → 配置」里有 serverAddr）</span>
+            {{ p.address || ('节点 ' + p.node_name) }}
             <span class="dim"> · {{ p.node_name }}</span>
           </div>
           <div class="mf-row-sub dim" v-if="p.last_error">上次错误：{{ p.last_error }}</div>
@@ -139,7 +137,7 @@
   </template>
 
   <!-- 新建 / 编辑 -->
-  <Modal v-if="ed.open" @close="ed.open = false" :title="ed.id ? '编辑隧道' : '新建隧道'">
+  <Modal :show="ed.open" @close="ed.open = false" :title="ed.id ? '编辑隧道' : '新建隧道'">
     <div class="field">
       <label>隧道名</label>
       <input class="input" v-model.trim="ed.name" placeholder="只给人类看，别用特殊符号" />
@@ -200,9 +198,8 @@
   </Modal>
 
   <!-- 更多 -->
-  <Modal v-if="more.open" @close="more.open = false" :title="more.p ? more.p.name : ''">
+  <Modal :show="more.open" @close="more.open = false" :title="more.p ? more.p.name : ''">
     <div class="mf-menu" v-if="more.p">
-      <button class="mf-menu-i" @click="copy(more.p.connect)"><Icon name="copy" />复制连接地址</button>
       <button class="mf-menu-i" @click="toConfig('toml')"><Icon name="file" />生成配置（TOML）</button>
       <button class="mf-menu-i" @click="toConfig('ini')"><Icon name="file" />生成配置（INI）</button>
       <button class="mf-menu-i" @click="askEdit"><Icon name="edit" />编辑</button>
@@ -216,7 +213,7 @@
   </Modal>
 
   <!-- 配置 -->
-  <Modal v-if="cfg.open" @close="cfg.open = false" :title="'启动配置 · ' + cfg.fmt.toUpperCase()">
+  <Modal :show="cfg.open" @close="cfg.open = false" :title="'启动配置 · ' + cfg.fmt.toUpperCase()">
     <div class="mf-note">官方客户端快捷启动（推荐，和网页面板的「启动参数」一致）：</div>
     <pre class="mf-pre">{{ cfg.command }}</pre>
     <div class="mf-note" style="margin-top:10px">配置文件方式（任意 frpc 0.52+ 都能用）：</div>
@@ -228,7 +225,7 @@
   </Modal>
 
   <!-- 日志 -->
-  <Modal v-if="log.open" @close="log.open = false" :title="'客户端日志 · ' + log.name">
+  <Modal :show="log.open" @close="log.open = false" :title="'客户端日志 · ' + log.name">
     <pre class="mf-pre mf-pre-lg">{{ log.text || '（还没有输出）' }}</pre>
     <template #footer>
       <button class="btn" @click="loadLog"><Icon name="refresh" />刷新</button>
@@ -240,9 +237,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { api, fmtB } from '../api'
-
-// MEFrp 的流量字段单位是 KB（不是字节），直接 fmtB 会显示成 KB 级数字
-const kb = (n) => fmtB((Number(n) || 0) * 1024)
 import { toast } from '../store'
 import Icon from '../components/Icon.vue'
 import Modal from '../components/Modal.vue'
@@ -266,21 +260,10 @@ const log = reactive({ open: false, id: 0, name: '', text: '' })
 
 let timer = 0
 
-const myGroup = computed(() => (info.value && info.value.group) || '')
-
-// 节点列表里带着「谁能用」的组限制（admin;sponsor;vip;default…）。不过滤的话
-// 普通账号会选到管理员的节点，提交后由平台报错，白填一遍表单。
 const usableNodes = computed(() => {
   const nodes = (info.value && info.value.nodes) || []
   const t = ed.type
-  const g = myGroup.value
-  return nodes.filter(n => {
-    if (n.disabled || !n.online) return false
-    if (!n.allow_type.includes(t)) return false
-    const allow = n.allow_group || []
-    if (!allow.length) return true
-    return !g || allow.includes(g)
-  })
+  return nodes.filter(n => !n.disabled && n.allow_type.includes(t))
 })
 
 function typeTone(t) {
@@ -532,7 +515,6 @@ onUnmounted(() => clearInterval(timer))
 .mf-row-t { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .mf-row-t b { font-size: 13.5px; max-width: 46vw; }
 .mf-row-sub { font-size: 11.5px; color: var(--dim); }
-.mf-addr { color: var(--brand); cursor: pointer; text-decoration: underline dotted; }
 .mf-row-ops { display: flex; gap: 6px; flex-shrink: 0; }
 .mf-row-ops .btn { padding: 4px 8px; font-size: 12px; }
 .mf-chips { display: flex; gap: 6px; flex-wrap: wrap; }

@@ -8,6 +8,7 @@ import json
 import mimetypes
 import os
 import re
+import secrets
 import signal
 import threading
 import time
@@ -53,6 +54,49 @@ class Err(Exception):
         self.code = code
         self.msg = msg
         self.field_errors = field_errors or {}
+
+
+# ---------------- 运维 API（供外部自动化调用，独立 token 鉴权） ----------------
+# 背景：OpenClaw 网关不能用 agent 内部命令重启（自重启会把自己掐死），
+# 需要由面板进程这样的「外部进程」代为执行 sv 重启。
+OPSAPI_FILE = os.path.join(core.DATA, "opsapi.json")
+OPSAPI_ACTIONS = ("restart", "start", "stop", "status")
+OPSAPI_SERVICES = ("openclaw",)  # 白名单：只允许操作这些服务
+
+
+def _opsapi_token():
+    """独立 token，存 data/opsapi.json（git 忽略 data/）。首次访问自动生成。"""
+    try:
+        d = core.read_json(OPSAPI_FILE, {})
+        tok = d.get("token")
+        if tok:
+            return tok
+        tok = secrets.token_urlsafe(32)
+        core.write_json(OPSAPI_FILE, {"token": tok, "created_at": int(time.time())})
+        return tok
+    except Exception:
+        return None
+
+
+def _opsapi_auth(req):
+    h = req.headers.get("Authorization") or ""
+    tok = h[7:].strip() if h.lower().startswith("bearer ") else req.q("token")
+    good = _opsapi_token()
+    if not good or not tok or not secrets.compare_digest(tok, good):
+        raise Err(401, "无效的运维 API token")
+
+
+def opsapi_service(req, name, action="status"):
+    _opsapi_auth(req)
+    if name not in OPSAPI_SERVICES:
+        raise Err(403, f"运维 API 只允许操作: {', '.join(OPSAPI_SERVICES)}")
+    if action not in OPSAPI_ACTIONS:
+        raise Err(400, f"不支持的操作: {action}")
+    out = metrics.service_action(name, action) if action != "status" else None
+    if action == "status":
+        return jresp({"ok": True, "service": name, "status": core.sh(
+            f"SVDIR={core.SVC_DIR} sv status {name} 2>&1")})
+    return jresp({"ok": True, "service": name, "action": action, "output": out})
 
 
 class Req:
@@ -1526,6 +1570,10 @@ ROUTES = [
     ("POST", r"^/api/shares$", share_create, True),
     ("GET", r"^/api/shares/list$", share_list, True),
     ("POST", r"^/api/shares/revoke$", share_revoke, True),
+
+    # 运维 API：独立 Bearer token 鉴权（不走会话），供外部自动化重启网关等
+    ("POST", r"^/api/ops/([a-z0-9_-]+)/(restart|start|stop)$", opsapi_service, False),
+    ("GET", r"^/api/ops/([a-z0-9_-]+)/status$", opsapi_service, False),
 ]
 
 COMPILED = [(m, re.compile(p), fn, auth) for (m, p, fn, auth) in ROUTES]

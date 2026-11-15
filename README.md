@@ -1318,6 +1318,25 @@ GET    /api/logs  /api/logs/{name}?lines=
 GET    /api/files?path=        列目录
 GET    /api/file?path=         读文件
 GET    /api/file?download=1    流式下载（Range）
+
+POST   /api/ops/{svc}/start|restart|stop   运维 API（独立 Bearer token，白名单服务）
+GET    /api/ops/{svc}/status
+```
+
+### 运维 API
+
+给外部自动化（例如 AI 助手）用的最小接口：独立 Bearer token 鉴权（不走面板会话），
+服务名白名单硬编码在 `app.py` 的 `OPSAPI_SERVICES`，默认只有 `openclaw`。
+token 存 `data/opsapi.json`（该目录已在 `.gitignore`），首次调用自动生成。
+存在的原因：agent 自己重启自己的网关会把自己掐死，需要面板进程这样的
+「外部进程」代为执行 `sv restart`。
+
+```bash
+# 首次调用任意 /api/ops/ 接口会自动生成 token：
+tok=$(python3 -c "import json;print(json.load(open('data/opsapi.json'))['token'])")
+curl -H "Authorization: Bearer $tok" http://127.0.0.1:8888/api/ops/openclaw/status
+curl -X POST -H "Authorization: Bearer $tok" http://127.0.0.1:8888/api/ops/openclaw/restart
+```
 PUT    /api/file               保存（自动快照旧版本）
 DELETE /api/file?path=
 POST   /api/file/mkdir|touch|rename|copy|chmod
