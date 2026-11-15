@@ -24,6 +24,7 @@ import dockerclient
 import events
 import files
 import gateway
+import guard
 import mefrp
 import messages
 import metrics
@@ -97,6 +98,47 @@ def opsapi_service(req, name, action="status"):
         return jresp({"ok": True, "service": name, "status": core.sh(
             f"SVDIR={core.SVC_DIR} sv status {name} 2>&1")})
     return jresp({"ok": True, "service": name, "action": action, "output": out})
+
+
+# ---------------- 守护进程 ----------------
+#
+# 面板和 guard.py 互为看门狗：面板这边只管「guard 还活着吗」，挂了就
+# 赶紧拉起来；面板自己的死活由 guard 那边探 HTTP 判断。
+
+def guard_status(req):
+    return jresp(guard.status())
+
+
+def guard_action(req, act):
+    if act == "stop":
+        # 先落一个 OFF 标记，否则面板自己的看门狗线程会在 60 秒后
+        # 把刚停掉的 guard 又拉回来，用户会觉得按钮没反应。
+        try:
+            with open(guard.OFF_FILE, "w", encoding="utf-8") as f:
+                f.write(str(int(time.time())))
+        except OSError:
+            pass
+        ok, out = guard.sv("down", guard.GUARD_SERVICE)
+        if not ok:
+            raise Err(500, f"停止守护失败：{out}")
+        return jresp({"ok": True, "action": "stop"})
+
+    if act == "start":
+        try:
+            os.remove(guard.OFF_FILE)
+        except OSError:
+            pass
+        if not guard.service_installed():
+            guard.ensure_service()
+        ok, out = guard.sv("restart", guard.GUARD_SERVICE)
+        if not ok:
+            raise Err(500, f"启动守护失败：{out}")
+        return jresp({"ok": True, "action": "start"})
+
+    ok, out = guard.sv("restart", guard.GUARD_SERVICE)
+    if not ok:
+        raise Err(500, f"重启守护失败：{out}")
+    return jresp({"ok": True, "action": "restart"})
 
 
 class Req:
@@ -1574,6 +1616,10 @@ ROUTES = [
     # 运维 API：独立 Bearer token 鉴权（不走会话），供外部自动化重启网关等
     ("POST", r"^/api/ops/([a-z0-9_-]+)/(restart|start|stop)$", opsapi_service, False),
     ("GET", r"^/api/ops/([a-z0-9_-]+)/status$", opsapi_service, False),
+
+    # 守护进程：双向看门狗的开关与状态
+    ("GET", r"^/api/guard/status$", guard_status, True),
+    ("POST", r"^/api/guard/(start|stop|restart)$", guard_action, True),
 ]
 
 COMPILED = [(m, re.compile(p), fn, auth) for (m, p, fn, auth) in ROUTES]
@@ -1906,6 +1952,10 @@ def main():
             term.close_all()
         except Exception:  # noqa: BLE001
             pass
+        try:
+            os.remove(os.path.join(core.DATA, "app.pid"))
+        except OSError:
+            pass
         # MEFrp 的客户端进程要一起收掉：否则面板重启后再拉一个，
         # 平台会判定「隧道已在线」而拒绝，两边都连不上。
         try:
@@ -1922,6 +1972,23 @@ def main():
 
     srv = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     srv.daemon_threads = True
+
+    # 端口已经绑上，可以告诉 guard「我在这儿」了。pid 只是给它 kill 用的，
+    # 探活还是走 HTTP —— 进程活着但服务卡死的情况，pid 骗不了人。
+    try:
+        with open(os.path.join(core.DATA, "app.pid"), "w", encoding="utf-8") as f:
+            f.write(str(os.getpid()))
+    except OSError:
+        traceback.print_exc()
+
+    # 守护进程：先确保 runit 里有这个服务，再挂一个反向看门狗线程。
+    # 装服务失败不影响面板本身，最多是少一层保护。
+    try:
+        guard.ensure_service()
+        threading.Thread(target=guard.watch_from_app, daemon=True).start()
+    except Exception:  # noqa: BLE001
+        traceback.print_exc()
+
     print(f"PocketPanel {core.APP_VERSION} 监听 0.0.0.0:{port}")
     print(f"本机访问: http://127.0.0.1:{port}")
     print(f"局域网:   http://{metrics.lan_ip()}:{port}")

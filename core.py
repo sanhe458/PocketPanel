@@ -13,7 +13,7 @@ import threading
 import time
 import hashlib
 
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.4.0"
 PREFIX = os.environ.get("PREFIX", "/data/data/com.termux/files/usr")
 SVC_DIR = os.path.join(PREFIX, "var/service")
 HOME = os.environ.get("HOME", "/data/data/com.termux/files/home")

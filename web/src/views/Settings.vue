@@ -100,6 +100,48 @@
       </div>
     </div>
 
+    <!-- 守护进程 -->
+    <div class="card flush" style="grid-column:1/-1">
+      <div class="card-h">
+        <Icon name="shield" />
+        <h3>守护进程</h3>
+        <div class="sub">
+          <span class="tag" :class="g.running ? (g.healthy ? 'g' : 'y') : 'y'">
+            <i class="dot" :style="g.running && g.healthy ? '' : 'background:var(--warn)'"></i>
+            {{ g.running ? (g.healthy ? '运行中' : '心跳异常') : '未运行' }}
+          </span>
+        </div>
+      </div>
+      <div class="card-b tight">
+        <div class="grid g3">
+          <div>
+            <div class="fs12 dim">最近心跳</div>
+            <div class="fs13" style="font-weight:600;margin-top:2px">{{ hbText }}</div>
+          </div>
+          <div>
+            <div class="fs12 dim">已拉起面板</div>
+            <div class="fs13" style="font-weight:600;margin-top:2px">{{ g.restarts || 0 }} 次</div>
+          </div>
+          <div>
+            <div class="fs12 dim">巡检间隔</div>
+            <div class="fs13" style="font-weight:600;margin-top:2px">{{ g.interval || 15 }} 秒</div>
+          </div>
+        </div>
+        <div class="hint mt8">
+          面板与守护进程互相盯着：面板 HTTP 连续无响应由守护进程重启；守护进程心跳断了由面板拉起。
+        </div>
+        <div class="hint" v-if="g.last_error">最近一次异常：{{ g.last_error }}</div>
+        <div class="hint" v-if="g.last_restart">上次拉起方式：{{ g.last_how || '—' }}，{{ fmtTime(g.last_restart) }}</div>
+      </div>
+      <div class="card-f">
+        <button class="btn" style="flex:1" :disabled="gbusy" @click="guardAct('restart')">重启守护</button>
+        <button v-if="g.enabled" class="btn danger" style="flex:1" :disabled="gbusy"
+                @click="guardAct('stop')">停止守护</button>
+        <button v-else class="btn success" style="flex:1" :disabled="gbusy"
+                @click="guardAct('start')">启动守护</button>
+      </div>
+    </div>
+
     <!-- 面板信息 -->
     <div class="card flush">
       <div class="card-h">
@@ -107,7 +149,7 @@
         <h3>面板信息</h3>
       </div>
       <div class="card-b tight">
-        <div class="kv"><span class="k">版本</span><span class="v mono">{{ ui.version || '0.3.0' }}</span></div>
+        <div class="kv"><span class="k">版本</span><span class="v mono">{{ ui.version || '0.4.0' }}</span></div>
         <div class="kv"><span class="k">后端</span><span class="v mono">Python {{ py || '—' }}</span></div>
         <div class="kv"><span class="k">前端</span><span class="v mono">Vue 3 + Vite</span></div>
         <div class="kv"><span class="k">当前访问</span><span class="v mono">{{ host }}</span></div>
@@ -152,7 +194,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { api } from '../api'
 import { ui, toast, applyTheme, setTermTransport } from '../store'
 import Icon from '../components/Icon.vue'
@@ -163,6 +205,35 @@ const showNew = ref(false)
 const err = ref('')
 const busy = ref(false)
 const py = ref('')
+const g = ref({})
+const gbusy = ref(false)
+let gTimer = 0
+const hbText = computed(() => {
+  const a = g.value.heartbeat_age
+  if (a === null || a === undefined) return '无心跳'
+  if (a < 5) return '刚刚'
+  if (a < 60) return a + ' 秒前'
+  return Math.floor(a / 60) + ' 分钟前'
+})
+function fmtTime(ts) {
+  if (!ts) return '—'
+  const d = new Date(ts * 1000)
+  return d.toLocaleString('zh-CN', { hour12: false })
+}
+async function loadGuard() {
+  try { g.value = await api('/api/guard/status') } catch { /* ignore */ }
+}
+async function guardAct(a) {
+  gbusy.value = true
+  try {
+    await api('/api/guard/' + a, { method: 'POST' })
+    toast(a === 'stop' ? '守护进程已停止' : a === 'start' ? '守护进程已启动' : '守护进程已重启', 'ok')
+  } catch (e) { toast(e.message, 'err') }
+  finally {
+    gbusy.value = false
+    setTimeout(loadGuard, 700)
+  }
+}
 const host = location.host
 const port = location.port || (location.protocol === 'https:' ? '443' : '80')
 
@@ -192,5 +263,8 @@ async function logout() {
 }
 onMounted(async () => {
   try { py.value = (await api('/api/health')).python } catch { /* ignore */ }
+  loadGuard()
+  gTimer = setInterval(loadGuard, 10000)
 })
+onUnmounted(() => { clearInterval(gTimer) })
 </script>

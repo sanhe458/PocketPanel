@@ -376,6 +376,37 @@ udockerd 注册进 `svc.py`：装了 runit 就写 `$PREFIX/var/service/udockerd/
 日志轮转 + 保活线程）。面板重启后按 pid 文件 + `/proc/<pid>/cmdline` 校验接管，
 不会重复拉起。保活用指数退避 1s→60s，连败 10 次写一条 `err` 进消息中心。
 
+### 面板自身的守护（M18）
+
+runit 会在进程退出时把它拉起来——真机实测 `kill -9` 之后 7 秒内换了个 pid 继续服务。
+但它只看进程在不在。线程死锁、PTY 泄漏把 fd 耗尽、SQLite 被锁死这类
+「进程活着、HTTP 已经不响应」的情况，runsv 永远看不出来，也就永远不会重启。
+
+`guard.py` 补的是这一段，和面板互为看门狗：
+
+| 方向 | 怎么判断 | 判定之后 |
+|---|---|---|
+| guard → 面板 | 每 15 秒 GET `/api/health`，5 秒超时 | 连接被拒 1 次，或连续 3 次失败，重启面板 |
+| 面板 → guard | 每 15 秒读 `data/guard.hb` | 心跳超过 60 秒没更新，或 pid 不在，重启 guard |
+
+两边都不自己 fork 对方，而是调 `sv restart <服务>`，由 runit 保证只有一个实例。
+runit 不在（开发机上跑）才退化成 `Popen(start_new_session=True)`，起之前先探一次端口，
+还通就说明其实活着，不起第二个。
+
+几个刻意的选择：
+
+- **连接被拒 = 进程没了**，不用等三次；超时和 5xx 才可能是抖动（正在跑大请求），
+  要攒够 3 次。这样 `kill -9` 到恢复是 12 秒左右，不是 45 秒。
+- **退避**：连续重启仍失败时 20s → 60s → 180s → 600s。面板要是因为代码错误根本
+  起不来，不至于一直狂拉把电烧了。
+- **主动停用**：界面上点「停止守护」先写 `data/guard.off` 再 `sv down`，
+  否则面板的看门狗线程 60 秒后会把刚停掉的 guard 又拉回来，用户会以为按钮没生效。
+- **启动宽限期**：面板起来后 55 秒内不检查 guard，两边各留一段启动时间，避免互相踢。
+
+文件：`guard.py`、`$PREFIX/var/service/pocketpanel-guard/{run,log/run}`、
+`data/{guard.pid,guard.hb,guard.json,guard.off,app.pid}`。
+界面在「设置 → 守护进程」，能看到心跳年龄、累计拉起次数、最近一次异常，也能启停。
+
 ### 告警
 
 `runtime.ensure_monitor()` 起一个线程长连 `/events`（`since` 游标 + 去重集合，

@@ -40,7 +40,7 @@
         <div class="brand-logo">P</div>
         <div class="grow" style="min-width:0">
           <b>PocketPanel</b>
-          <span>Termux 面板 v{{ ui.version || '0.3.0' }}</span>
+          <span>Termux 面板 v{{ ui.version || '0.4.0' }}</span>
         </div>
       </div>
 
