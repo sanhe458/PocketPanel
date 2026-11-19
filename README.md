@@ -70,7 +70,8 @@ ssh -p <SSH端口> -L 8888:127.0.0.1:8888 <用户名>@<主机>
 - **紧凑数据表格**：`table.tbl` sticky 表头、行 hover、右对齐操作列 `.tbl-ops`，统一由 `DataTable.vue` 封装。
 - **指标卡**：`StatCard.vue`，CPU / 内存 / 存储 / 电池等按阈值切换语义色与进度条。
 - **统一图标库**：`icons.js` 收录约 90 个 24×24 线性 SVG path，替代早先的 Unicode 字符图标。
-- **浮层栈**：`overlay.js` 统一管理 Modal 与 Sheet 的层级，Esc 只关闭最上层浮层。
+- **浮层栈**：`overlay.js` 统一管理 Modal 与 Sheet 的层级，Esc 只关闭最上层浮层；Modal 用 `v-if="open"`
+  控制显隐，写 `:show="open"` 也兼容（组件按 `show` 决定渲染与占栈）。
 - **Design Token**：颜色 / 圆角 / 阴影 / 间距全部走 CSS 变量，深浅主题由 `[data-theme]` 覆盖。
 - **hash 路由**：URL 形如 `/#/files`，切换页面走组件级替换 + 150ms 淡入（宝塔式无整页刷新）；
   刷新 / 分享链接 / 浏览器前进后退都能直达对应页面，未登录访问带路径的链接时登录后自动落位；

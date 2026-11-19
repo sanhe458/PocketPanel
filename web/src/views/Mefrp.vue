@@ -137,7 +137,7 @@
   </template>
 
   <!-- 新建 / 编辑 -->
-  <Modal :show="ed.open" @close="ed.open = false" :title="ed.id ? '编辑隧道' : '新建隧道'">
+  <Modal v-if="ed.open" @close="ed.open = false" :title="ed.id ? '编辑隧道' : '新建隧道'">
     <div class="field">
       <label>隧道名</label>
       <input class="input" v-model.trim="ed.name" placeholder="只给人类看，别用特殊符号" />
@@ -198,7 +198,7 @@
   </Modal>
 
   <!-- 更多 -->
-  <Modal :show="more.open" @close="more.open = false" :title="more.p ? more.p.name : ''">
+  <Modal v-if="more.open" @close="more.open = false" :title="more.p ? more.p.name : ''">
     <div class="mf-menu" v-if="more.p">
       <button class="mf-menu-i" @click="toConfig('toml')"><Icon name="file" />生成配置（TOML）</button>
       <button class="mf-menu-i" @click="toConfig('ini')"><Icon name="file" />生成配置（INI）</button>
@@ -213,7 +213,7 @@
   </Modal>
 
   <!-- 配置 -->
-  <Modal :show="cfg.open" @close="cfg.open = false" :title="'启动配置 · ' + cfg.fmt.toUpperCase()">
+  <Modal v-if="cfg.open" @close="cfg.open = false" :title="'启动配置 · ' + cfg.fmt.toUpperCase()">
     <div class="mf-note">官方客户端快捷启动（推荐，和网页面板的「启动参数」一致）：</div>
     <pre class="mf-pre">{{ cfg.command }}</pre>
     <div class="mf-note" style="margin-top:10px">配置文件方式（任意 frpc 0.52+ 都能用）：</div>
@@ -225,7 +225,7 @@
   </Modal>
 
   <!-- 日志 -->
-  <Modal :show="log.open" @close="log.open = false" :title="'客户端日志 · ' + log.name">
+  <Modal v-if="log.open" @close="log.open = false" :title="'客户端日志 · ' + log.name">
     <pre class="mf-pre mf-pre-lg">{{ log.text || '（还没有输出）' }}</pre>
     <template #footer>
       <button class="btn" @click="loadLog"><Icon name="refresh" />刷新</button>
